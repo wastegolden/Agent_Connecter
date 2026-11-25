@@ -10,6 +10,11 @@ const jobFields = Object.keys(job)
 const clientTools = [
   ['targets','List available harnesses and the server project whitelist.'],
   ['local_sessions','Find local transcripts available for explicit selection.',{harness}],
+  ['remote_sessions','List redacted local sessions available on the paired remote server.',{harness}],
+  ['remote_session_read','Extract redacted transcript, memories, and artifacts from a session on the paired remote server.',{
+    harness,id:str,origin:{enum:['app','cli']},includeThinking:{type:'boolean'},includeHistory:{type:'boolean'},
+    includeMemories:{type:'boolean'},attachToolResults:{type:'boolean'},file:str,
+    offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:8*1024*1024}},['harness','id']],
   ['pack_preview','Freeze a redacted local plan and selected transcripts for dispatch.',{
     plan:str,sources:{type:'array',items:{type:'object',properties:{harness,id:str,origin:{enum:['app','cli']}},required:['harness','id']}},
     includeThinking:{type:'boolean'},includeHistory:{type:'boolean'},attachToolResults:{type:'boolean'}},['plan']],
@@ -49,6 +54,13 @@ export function toolService(config) {
     const request = remote(await credentials())
     if (key==='dispatch') return dispatch(config,request,args)
     if (key==='targets') return (await request('/api/capabilities')).json()
+    if (key==='remote_sessions') {
+      const q = args.harness ? '?harness='+encodeURIComponent(args.harness) : ''
+      return (await request('/api/sessions'+q)).json()
+    }
+    if (key==='remote_session_read') {
+      return (await request('/api/sessions/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)})).json()
+    }
     if (key==='jobs') return (await request('/api/jobs')).json()
     const {jobId,...decision} = args
     if (!jobId) fail('JOB_ID_REQUIRED')

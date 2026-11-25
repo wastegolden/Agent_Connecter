@@ -36,6 +36,57 @@ export async function listSessions({ harness, home = homedir(), tempDir = tmpdir
   return sessions
 }
 
+export async function extractSession({
+  harness, id, origin, home = homedir(), tempDir = tmpdir(),
+  includeThinking = false, includeHistory = false, includeMemories = true, attachToolResults = false,
+  file, offset = 0, limit = 200000
+} = {}) {
+  if (!harness || typeof id !== 'string' || !id) throw problem('SESSION_NOT_FOUND', 'Harness and session id are required', 400)
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 8 * 1024 * 1024)
+    throw problem('INVALID_ARGUMENTS', 'Invalid offset or limit', 400)
+  await mkdir(tempDir, { recursive: true })
+  const stage = await mkdtemp(join(tempDir, 'read-'))
+  try {
+    const found = (await catalog(harness, home, stage)).filter(s => s.id === id && (!origin || s.origin === origin))
+    if (found.length !== 1) throw problem('SESSION_NOT_FOUND', 'Select an existing, unambiguous session, including origin for duplicate IDs', 404)
+    const session = found[0]
+    const prefix = 'CONTEXT/1-' + harness
+    const stats = { files: 0, rawBytes: 0, cleanBytes: 0, redactedCount: 0 }
+    const files = []
+    let remaining = limit
+    for await (const { name, raw, clean, redactedCount = 0, derivedFrom } of extractors.get(harness)(session, {
+      attachToolResults, includeThinking, includeHistory, includeMemories, home, prefix, tempDir: stage
+    })) {
+      const encoding = isUtf8(raw) ? 'utf8' : 'latin1'
+      const masked = clean === undefined ? redact(raw.toString(encoding)) : { clean, redactedCount: 0 }
+      const fullText = masked.clean
+      const totalRedacted = masked.redactedCount + redactedCount
+      const rel = name.startsWith(prefix + '/') ? name.slice(prefix.length + 1) : name
+      stats.files++
+      if (!derivedFrom) stats.rawBytes += raw.length
+      stats.cleanBytes += Buffer.byteLength(fullText)
+      stats.redactedCount += totalRedacted
+      if (file && rel !== file && name !== file) continue
+      const start = file ? offset : 0
+      const budget = file ? limit : remaining
+      const slice = budget > 0 ? fullText.slice(start, start + budget) : ''
+      if (!file) remaining = Math.max(0, remaining - slice.length)
+      const nextOffset = start + slice.length < fullText.length ? start + slice.length : null
+      files.push({
+        path: rel, rawBytes: raw.length, cleanChars: fullText.length, redactedCount: totalRedacted,
+        offset: start, nextOffset, complete: nextOffset === null, text: slice
+      })
+    }
+    if (file && !files.length) throw problem('FILE_NOT_FOUND', 'Requested file not found in session', 404)
+    return {
+      session: { harness, id: session.id, origin: session.origin, cwd: session.cwd && redact(session.cwd).clean, title: redact(session.title).clean },
+      stats,
+      complete: files.every(f => f.complete),
+      files
+    }
+  } finally { await rm(stage, { recursive: true, force: true }) }
+}
+
 function meter(limit, digest) {
   let size = 0
   return new Transform({

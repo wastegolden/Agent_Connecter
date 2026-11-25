@@ -7,7 +7,7 @@ import { once } from 'node:events'
 import { Store } from '../store.mjs'
 import { clientAuth, pair, digest, machineId, secret, matches } from '../auth.mjs'
 import { harnesses, protocolVersion, pluginVersion, fail, targets, workerFile } from '../config.mjs'
-import { unpackBundle } from '../packer/index.mjs'
+import { extractSession, listSessions, unpackBundle } from '../packer/index.mjs'
 import { createLauncher } from '../launcher/index.mjs'
 import { createUpdate } from './updater.mjs'
 
@@ -239,6 +239,17 @@ export async function startServer(config, launcherFactory = createLauncher) {
     if (req.headers['x-protocol-version'] && req.headers['x-protocol-version']!==String(protocolVersion)) fail('VERSION_MISMATCH',409)
     if (req.headers['x-plugin-version'] && req.headers['x-plugin-version'].split('.')[0]!==pluginVersion.split('.')[0]) fail('VERSION_MISMATCH',409)
     if (get && path==='/api/capabilities') return json(res,capabilities())
+    if (get && path==='/api/sessions') {
+      const harness = new URL(req.url, 'http://localhost').searchParams.get('harness') || undefined
+      if (harness && !harnesses.includes(harness)) fail('HARNESS_UNKNOWN')
+      return json(res, await listSessions({ harness, home: config.sourceHome, tempDir: config.previewDir }))
+    }
+    if (post && path==='/api/sessions/extract') {
+      const input = await body(req)
+      if (!harnesses.includes(input.harness)) fail('HARNESS_UNKNOWN')
+      if (input.origin !== undefined && !['app', 'cli'].includes(input.origin)) fail('INVALID_ARGUMENTS')
+      return json(res, await extractSession({ ...input, home: config.sourceHome, tempDir: config.previewDir }))
+    }
     if (get && path==='/api/jobs') return json(res,store.jobs().map(publicJob))
     if (post && path==='/api/jobs') return dispatch(req,res,client)
     if (get && path==='/api/events') {

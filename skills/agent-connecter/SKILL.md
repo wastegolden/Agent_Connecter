@@ -5,7 +5,7 @@ description: Relay a plan to a whitelisted project on a paired Windows host, fre
 
 ### 主力机
 
-1. 用 `connecter_targets` 查看常开机公布的项目和 harness。由用户指定 `targetHarness` 和 `targetProject`。需要续接时记录准确的 `targetSessionId`，Antigravity CLI 需要显式选择 `antigravityMode: "cli"`。
+1. 用 `connecter_targets` 查看常开机公布的项目和 harness；需要整理下位机旧会话或选定续接 ID 时，用 `connecter_remote_sessions` 列出下位机三家本地会话，并用 `connecter_remote_session_read` 提取纯净脱敏后的对话正文与记忆。由用户指定 `targetHarness` 和 `targetProject`，Antigravity CLI 需要显式选择 `antigravityMode: "cli"`。
 2. 用 `connecter_local_sessions` 列出本机会话。只选择本次计划需要的来源，Antigravity 同 ID 时带上 `origin`。
 3. 将计划正文和来源传给 `connecter_pack_preview`。向用户展示来源、字节数、脱敏计数和 `bundleHash`。按用户指示用 `connecter_dispatch` 派发该哈希。同一次派发重试须复用原 `idempotencyKey`。
 4. 用 `connecter_jobs` 和 `connecter_get_report` 查看状态、提案和问题。按用户的决定调用 `connecter_respond`，带上当前 `proposalId` 或 `questionId`。收到 `DECISION_STALE` 时重新读取报告并核对新版本。

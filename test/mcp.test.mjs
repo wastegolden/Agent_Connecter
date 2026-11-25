@@ -40,7 +40,7 @@ test('CLI pairing and three MCP roles over actual stdio, including tools dispatc
   assert.match(pin,/^\d{6}$/)
   const paired=JSON.parse(await run('cli',['link',url,'--code',pin,'--name','cli-test']))
   assert.equal(paired.serverUrl,url)
-  for (const [mode,count] of [['client',7],['server',4],['both',11]]){
+  for (const [mode,count] of [['client',9],['server',4],['both',13]]){
     await setMode(mode)
     const replies=await stdio('{broken',rpc(0,'initialize',{protocolVersion:'2025-06-18'}),
       {jsonrpc:'2.0',method:'notifications/initialized'},rpc(1,'tools/list'))

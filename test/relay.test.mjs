@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { createGzip } from 'node:zlib'
@@ -18,7 +18,7 @@ const code = name => error => error.code === name
 async function fixture(t) {
   const root = await mkdtemp(join(process.cwd(),'.relay-test-'))
   const config = {mode:'both',lanHost:'127.0.0.1',localPort:0,lanPort:0,projects:{demo:root},
-    previewDir:join(root,'previews'),dataDir:join(root,'data')}
+    sourceHome:join(root,'home'),previewDir:join(root,'previews'),dataDir:join(root,'data')}
   const launches = [], wakes = []
   const server = await startServer(config, (config,sidecar)=>({
     available:(h,mode)=>['codex','claude-code'].includes(h) || (h==='antigravity' && (mode==='cli'||sidecar.connected())),
@@ -269,4 +269,33 @@ test('SSE resumes after Last-Event-ID, respects retention, exposes live sidecar 
   assert.equal(latestRes.status,200)
   latestCtrl.abort()
   side.abort();await commands.return()
+})
+
+test('remote sessions listing and redacted transcript extraction with paging',async t=>{
+  const {request,config}=await fixture(t)
+  const dir=join(config.sourceHome,'.claude','projects','demo-proj')
+  await mkdir(join(dir,'memory'),{recursive:true})
+  await writeFile(join(dir,'memory','MEMORY.md'),'Saved note with sk-secretTokenValue123456\n')
+  await writeFile(join(dir,'sess-1.jsonl'),[
+    JSON.stringify({type:'user',cwd:'/repo',sessionId:'sess-1',slug:'整理测试',message:{content:'请整理 sk-secretTokenValue123456 的记录'}}),
+    JSON.stringify({type:'assistant',cwd:'/repo',sessionId:'sess-1',message:{content:[{type:'text',text:'已完成整理并核实结论。'}]}})
+  ].join('\n')+'\n')
+  const list=await (await request('/api/sessions?harness=claude-code')).json()
+  assert.equal(list.length,1)
+  assert.equal(list[0].id,'sess-1')
+  assert.equal(list[0].title,'整理测试')
+  await assert.rejects(request('/api/sessions?harness=dsh'),code('HARNESS_UNKNOWN'))
+  const full=await (await request('/api/sessions/extract',post({harness:'claude-code',id:'sess-1'}))).json()
+  assert.equal(full.complete,true)
+  assert.equal(full.session.id,'sess-1')
+  assert.equal(full.stats.redactedCount,2)
+  assert.ok(full.files.some(f=>f.path==='transcript.jsonl' && f.text.includes('已完成整理') && !f.text.includes('sk-secretTokenValue123456')))
+  assert.ok(full.files.some(f=>f.path==='memory/MEMORY.md' && f.text.includes('[REDACTED]')))
+  const page1=await (await request('/api/sessions/extract',post({harness:'claude-code',id:'sess-1',file:'transcript.jsonl',offset:0,limit:40}))).json()
+  assert.equal(page1.complete,false)
+  assert.equal(page1.files[0].nextOffset,40)
+  const page2=await (await request('/api/sessions/extract',post({harness:'claude-code',id:'sess-1',file:'transcript.jsonl',offset:40,limit:10000}))).json()
+  assert.equal(page2.complete,true)
+  assert.equal(page1.files[0].text+page2.files[0].text, full.files.find(f=>f.path==='transcript.jsonl').text)
+  await assert.rejects(request('/api/sessions/extract',post({harness:'claude-code',id:'missing'})),code('SESSION_NOT_FOUND'))
 })
