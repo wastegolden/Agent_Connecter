@@ -3,6 +3,19 @@ import { basename, join } from 'node:path'
 import { files, hasTable, jsonLines, original, problem, snapshot } from './io.mjs'
 import { cleanLines } from './redact.mjs'
 
+function parseTimestamp(value) {
+  if (value === null || value === undefined || value === '') return null
+  const text = String(value).trim()
+  if (/^\d+$/.test(text)) {
+    const n = BigInt(text)
+    const ms = n > 10n ** 15n ? Number(n / 1000000n) : n > 10n ** 12n ? Number(n) : Number(n * 1000n)
+    const d = new Date(ms)
+    return Number.isNaN(d.valueOf()) ? null : d.toISOString()
+  }
+  const d = new Date(text)
+  return Number.isNaN(d.valueOf()) ? null : d.toISOString()
+}
+
 export async function antigravitySessions(home, tempDir) {
   const sessions = []
   for (const [origin, folder] of [['app', 'antigravity'], ['cli', 'antigravity-cli']]) {
@@ -17,7 +30,8 @@ export async function antigravitySessions(home, tempDir) {
         const names = db.prepare('PRAGMA table_info(' + table + ')').all().map(c => c.name)
         const columns = ['conversation_id', 'title', 'workspace', 'workspace_uris', 'archived', 'last_modified_time'].filter(key => names.includes(key))
         if (!columns.includes('conversation_id')) continue
-        for (const row of db.prepare('SELECT DISTINCT ' + columns.join(',') + ' FROM ' + table).iterate()) {
+        const select = columns.map(c => c === 'last_modified_time' ? 'CAST(last_modified_time AS TEXT) AS last_modified_time' : c).join(',')
+        for (const row of db.prepare('SELECT DISTINCT ' + select + ' FROM ' + table).iterate()) {
           metadata.set(row.conversation_id, { ...metadata.get(row.conversation_id), ...row })
         }
       }
@@ -35,8 +49,7 @@ export async function antigravitySessions(home, tempDir) {
       const annArchived = /\barchived\s*:\s*(true|false)\b/.exec(ann)?.[1]
       const annTitle = /\btitle\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(ann)?.[1]?.replace(/\\(.)/g, '$1')
       const archived = annArchived !== undefined ? annArchived === 'true' : (row?.archived !== undefined ? Boolean(row.archived) : false)
-      const parsedTime = row?.last_modified_time ? new Date(row.last_modified_time) : null
-      const updatedAt = parsedTime && !Number.isNaN(parsedTime.valueOf()) ? parsedTime.toISOString() : statSync(transcript).mtime.toISOString()
+      const updatedAt = parseTimestamp(row?.last_modified_time) ?? statSync(transcript).mtime.toISOString()
       sessions.push({ harness: 'antigravity', origin, id, cwd: row?.workspace ?? row?.workspace_uris, title: row?.title || annTitle || id, archived, updatedAt, dir, logs })
     }
   }

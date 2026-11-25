@@ -1,7 +1,7 @@
 {
   "name": "agent-connecter",
   "displayName": "Agent Connecter",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Dispatch plans and review worker reports across a Windows LAN.",
   "author": { "name": "Agent Connecter contributors" }
 }

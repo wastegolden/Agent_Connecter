@@ -177,10 +177,10 @@ test('Antigravity scans App and CLI catalogs and resolves truncated steps by ste
     }))))
     await put(base + '/brain/session/plan.md', origin + ' full artifact')
     const db = new DatabaseSync(join(home, base, 'conversation_summaries.db'))
-    db.exec(`CREATE TABLE conversation_summaries(conversation_id,title);
-      CREATE VIRTUAL TABLE conversations_fts USING fts5(conversation_id,title,workspace);
-      INSERT INTO conversations_fts VALUES ('session','search title','actual workspace')`)
-    db.prepare('INSERT INTO conversation_summaries VALUES (?,?)').run('session', origin)
+    db.exec(`CREATE TABLE conversation_summaries(conversation_id,title,last_modified_time);
+      CREATE VIRTUAL TABLE conversations_fts USING fts5(conversation_id,title,workspace,last_modified_time);
+      INSERT INTO conversations_fts VALUES ('session','search title','actual workspace',1795225880218509100)`)
+    db.prepare('INSERT INTO conversation_summaries VALUES (?,?,?)').run('session', origin, 1795225880218509100n)
     db.close()
   }
   const sessions = await listSessions({ home, tempDir: home })
