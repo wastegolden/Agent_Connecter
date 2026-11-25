@@ -1,0 +1,16 @@
+{
+  "name": "agent-connecter",
+  "version": "1.0.0",
+  "description": "LAN plan relay and approval for visible Windows agent sessions",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "bin": {
+    "connecter-cli": "./bin/connecter-cli.mjs",
+    "connecter-server": "./bin/connecter-server.mjs",
+    "connecter-mcp": "./bin/connecter-mcp.mjs",
+    "connecter-notifier": "./bin/connecter-notifier.mjs",
+    "antigravity-sidecar": "./bin/antigravity-sidecar.mjs"
+  },
+  "scripts": { "test": "node --test", "validate": "node scripts/validate-plugins.mjs" },
+  "files": ["bin", "src", "scripts", "skills", "sidecars", "test", ".claude-plugin", ".codex-plugin", ".antigravity-plugin", ".codex-mcp.json", ".antigravity-mcp.json", "README.md", "DESIGN.md"]
+}

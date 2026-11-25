@@ -1,0 +1,7 @@
+{
+  "display_name": "Agent Connecter",
+  "description": "Open and wake relay conversations in the Antigravity App.",
+  "command": "node",
+  "args": ["../../bin/antigravity-sidecar.mjs"],
+  "restart_policy": "on-failure"
+}

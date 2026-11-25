@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.packer-test-*/
+.launcher-*/
+.test-*/
+.npm-*/

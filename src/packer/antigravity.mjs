@@ -1,0 +1,62 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
+import { files, hasTable, jsonLines, original, problem, snapshot } from './io.mjs'
+import { cleanLines } from './redact.mjs'
+
+export async function antigravitySessions(home, tempDir) {
+  const sessions = []
+  for (const [origin, folder] of [['app', 'antigravity'], ['cli', 'antigravity-cli']]) {
+    const root = join(home, '.gemini', folder)
+    const brain = join(root, 'brain')
+    if (!existsSync(brain)) continue
+    const catalog = join(root, 'conversation_summaries.db')
+    const metadata = new Map()
+    if (existsSync(catalog)) await snapshot(catalog, tempDir, db => {
+      for (const table of ['conversations_fts', 'conversation_summaries']) {
+        if (!hasTable(db, table)) continue
+        const names = db.prepare('PRAGMA table_info(' + table + ')').all().map(c => c.name)
+        const columns = ['conversation_id', 'title', 'workspace', 'workspace_uris'].filter(key => names.includes(key))
+        if (!columns.includes('conversation_id')) continue
+        for (const row of db.prepare('SELECT DISTINCT ' + columns.join(',') + ' FROM ' + table).iterate()) {
+          metadata.set(row.conversation_id, { ...metadata.get(row.conversation_id), ...row })
+        }
+      }
+    })
+    for (const entry of readdirSync(brain, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const id = entry.name
+      const dir = join(brain, id)
+      const logs = join(dir, '.system_generated', 'logs')
+      if (!files(logs).some(p => basename(p) === 'transcript.jsonl')) continue
+      const row = metadata.get(id)
+      sessions.push({ harness: 'antigravity', origin, id, cwd: row?.workspace ?? row?.workspace_uris, title: row?.title ?? id, dir, logs })
+    }
+  }
+  return sessions
+}
+
+export async function* antigravityFiles(session, { prefix }) {
+  const raw = readFileSync(join(session.logs, 'transcript.jsonl'))
+  const records = [...jsonLines(raw)].filter(r => ['USER_INPUT', 'PLANNER_RESPONSE', 'GENERIC'].includes(r.type))
+  const missing = new Set(records.filter(r => r.truncated_fields && Object.keys(r.truncated_fields).length).map(r => r.step_index))
+  const full = new Map()
+  const inputs = []
+  if (missing.size) {
+    const fullPath = join(session.logs, 'transcript_full.jsonl')
+    if (!existsSync(fullPath)) throw problem('TRANSCRIPT_INCOMPLETE', 'Missing transcript_full.jsonl in ' + session.id)
+    const data = readFileSync(fullPath)
+    inputs.push({ name: 'transcript_full.jsonl', raw: data })
+    for (const row of jsonLines(data)) {
+      if (missing.has(row.step_index)) full.set(row.step_index, row)
+    }
+    if (full.size !== missing.size) throw problem('TRANSCRIPT_INCOMPLETE', 'Missing full Antigravity step in ' + session.id)
+  }
+  const turns = records.map(row => {
+    const { input_tokens, cache_read_tokens, output_tokens, truncated_fields, ...turn } = full.get(row.step_index) ?? row
+    return turn
+  })
+  yield { name: prefix + '/transcript.jsonl', raw, ...cleanLines(turns), inputs }
+  for (const p of files(session.dir).filter(path => path.endsWith('.md'))) {
+    yield original(p, prefix + '/brain/' + basename(p))
+  }
+}

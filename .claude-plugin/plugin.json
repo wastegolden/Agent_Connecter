@@ -1,0 +1,13 @@
+{
+  "name": "agent-connecter",
+  "version": "1.0.0",
+  "description": "Dispatch plans and review worker reports across a Windows LAN.",
+  "author": { "name": "Agent Connecter contributors" },
+  "mcpServers": {
+    "agent-connecter": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/connecter-mcp.mjs"]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agent-connecter": {
+      "command": "node",
+      "args": ["./bin/connecter-mcp.mjs"],
+      "tool_timeout_sec": 70
+    }
+  }
+}

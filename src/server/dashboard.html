@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Connecter · Jobs</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f6f3;color:#192927;font:16px/1.45 "Source Sans 3","Segoe UI",sans-serif}
+header{border-bottom:1px solid #cdd4d0;background:#173c37;color:white;padding:1.1rem max(5vw,1rem);font-weight:650;letter-spacing:.03em}
+main{margin:2.5rem auto;padding:0 1rem;max-width:68rem}h1{font-size:2.1rem;margin:0 0 1.1rem}h2{font-size:1.3rem}
+label{display:block;margin:.7rem 0 .3rem}button,input,textarea,select{font:inherit;border-radius:.35rem;border:1px solid #7f918c;padding:.5rem .8rem}
+button{cursor:pointer;background:#21574c;color:white;margin:.4rem .25rem .4rem 0}button:focus-visible{outline:3px solid #dc9229}input,textarea,select{max-width:100%;background:white}
+textarea{width:100%}#detail{margin-top:1.5rem;padding:1.5rem;background:white;border:1px solid #cdd4d0;border-radius:.6rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}small{color:#566963}
+</style>
+<header>Agent Connecter</header><main><form id="login"><h1>Connect to the relay</h1>
+<label for="token">Bearer token</label><input id="token" type="password" autocomplete="off" required> <button>Connect</button></form>
+<section id="jobs" hidden><h1>Jobs</h1><label for="list">Select job</label><select id="list"></select>
+<article id="detail" hidden><h2 id="title"></h2><small id="state"></small><section id="reports"></section>
+<form id="decide" hidden><label for="note">Decision message</label><textarea rows="3" id="note"></textarea><div id="actions"></div></form></article></section>
+<p id="status" role="status"></p></main>
+<script type="module">
+const el=id=>document.getElementById(id)
+let bearer='',cursor=0,selected,revision=0,timer
+async function api(path,options={}){
+  const r=await fetch(path,{...options,redirect:'error',headers:{Authorization:'Bearer '+bearer,...options.headers}})
+  if(!r.ok)throw Error((await r.json()).error || String(r.status))
+  return r
+}
+const line=(tag,value)=>{const e=document.createElement(tag);e.textContent=value;return e}
+async function show(){
+  const rev=++revision,id=el('list').value
+  selected=undefined;el('decide').hidden=true;el('detail').hidden=!id
+  if(!id)return
+  const {job,reports,decisions}=await(await api('/api/jobs/'+encodeURIComponent(id))).json()
+  if(rev!==revision)return
+  selected=job
+  el('title').textContent=job.targetProject+' / '+job.targetHarness
+  el('state').textContent=job.status+' · '+job.id
+  const entries=[...reports.map(r=>({at:r.at,title:r.kind,text:r.text})),...decisions.map(d=>({at:d.at,title:d.action,text:d.message}))].sort((a,b)=>a.at-b.at)
+  el('reports').replaceChildren(...entries.flatMap(r=>[line('h3',r.title),line('pre',r.text)]))
+  el('decide').hidden=!(job.proposalId || job.questionId)
+  el('actions').replaceChildren(...(job.questionId?['reply','cancel']:['approve','revise','cancel']).map(action=>{
+    const b=line('button',action);b.value=action;return b
+  }))
+}
+async function refresh(){
+  const jobs=await(await api('/api/jobs')).json(),old=el('list').value
+  el('list').replaceChildren(...jobs.map(j=>{const o=line('option',j.targetProject+' · '+j.targetHarness+' · '+j.status+' · '+j.id.slice(0,8));o.value=j.id;return o}))
+  if(jobs.some(j=>j.id===old))el('list').value=old
+  el('status').textContent=jobs.length?'':'No jobs yet.'
+  await show()
+}
+const error=e=>{el('status').textContent=e.message}
+async function subscribe(){
+  for(;;){
+    try{
+      const res=await api('/api/events',{headers:{'Last-Event-ID':String(cursor)}})
+      let buffer=''
+      for await(const text of res.body.pipeThrough(new TextDecoderStream())){
+        buffer+=text
+        let pos
+        while((pos=buffer.indexOf('\n\n'))>=0){
+          const frame=buffer.slice(0,pos);buffer=buffer.slice(pos+2)
+          const id=frame.match(/^id: (\d+)/m)
+          if(id){cursor=Number(id[1]);clearTimeout(timer);timer=setTimeout(()=>refresh().catch(error),80)}
+        }
+      }
+    }catch(e){error(e);if(e.message==='UNAUTHORIZED'){bearer='';el('jobs').hidden=true;el('login').hidden=false;return}}
+    await new Promise(resolve=>setTimeout(resolve,1500))
+  }
+}
+el('login').onsubmit=async e=>{
+  e.preventDefault();bearer=el('token').value.trim()
+  try{await refresh();el('token').value='';el('login').hidden=true;el('jobs').hidden=false;subscribe()}catch(e){error(e)}
+}
+el('list').onchange=()=>show().catch(error)
+el('decide').onsubmit=async e=>{
+  e.preventDefault()
+  const job=selected;if(!job)return
+  const action=e.submitter.value
+  try{await api('/api/jobs/'+job.id+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action,proposalId:job.proposalId,questionId:job.questionId,message:el('note').value})})
+    el('note').value='';await refresh()
+  }catch(e){error(e)}
+}
+</script></html>
