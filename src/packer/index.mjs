@@ -26,14 +26,15 @@ async function catalog(harness, home, tempDir) {
   return scan(home, tempDir)
 }
 
-export async function listSessions({ harness, home = homedir(), tempDir = tmpdir() } = {}) {
+export async function listSessions({ harness, activeOnly = false, home = homedir(), tempDir = tmpdir() } = {}) {
   const sessions = []
   for (const name of harness ? [harness] : readers.keys()) {
-    for (const { id, cwd, title, origin } of await catalog(name, home, tempDir)) {
-      sessions.push({ harness: name, id, origin, cwd: cwd && redact(cwd).clean, title: redact(title).clean })
+    for (const { id, cwd, title, origin, archived = null, updatedAt = null } of await catalog(name, home, tempDir)) {
+      if (activeOnly && archived === true) continue
+      sessions.push({ harness: name, id, origin, archived, updatedAt, cwd: cwd && redact(cwd).clean, title: redact(title).clean })
     }
   }
-  return sessions
+  return sessions.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
 }
 
 export async function extractSession({

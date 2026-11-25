@@ -184,7 +184,8 @@ test('Antigravity scans App and CLI catalogs and resolves truncated steps by ste
     db.close()
   }
   const sessions = await listSessions({ home, tempDir: home })
-  assert.deepEqual(sessions.map(s => [s.origin, s.title, s.cwd]), [['app', 'app', 'actual workspace'], ['cli', 'cli', 'actual workspace']])
+  assert.deepEqual(sessions.map(s => [s.origin, s.title, s.cwd]).sort((a, b) => a[0].localeCompare(b[0])),
+    [['app', 'app', 'actual workspace'], ['cli', 'cli', 'actual workspace']])
   await assert.rejects(preview([{ harness: 'antigravity', id: 'session' }]), { code: 'SESSION_NOT_FOUND' })
   const bundle = await preview(sessions)
   const read = await unpack(bundle)

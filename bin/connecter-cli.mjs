@@ -9,7 +9,7 @@ import { updateClient } from '../src/client/updater.mjs'
 
 const [command,...argv] = process.argv.slice(2)
 const help = `connecter-cli pair | revoke NAME | link URL --code CODE [--name NAME]
-connecter-cli targets | local-sessions [--harness HARNESS] | remote-sessions [--harness HARNESS] | jobs | report --job UUID
+connecter-cli targets | local-sessions [--harness HARNESS] [--active-only] | remote-sessions [--harness HARNESS] [--active-only] | jobs | report --job UUID
 connecter-cli remote-read --harness HARNESS --session ID [--origin app|cli] [--file PATH] [--offset N] [--limit N] [--out FILE] [--include-thinking] [--include-history] [--no-memories]
 connecter-cli pack --plan FILE [--sources FILE] [--include-thinking] [--include-history]
 connecter-cli dispatch --bundle HASH --harness HARNESS --project KEY --key IDEMPOTENCY_KEY
@@ -23,7 +23,7 @@ async function main() {
     'effort','antigravity-mode','proposal','question','message','origin','file','offset','limit','out']
   const {values:v,positionals} = parseArgs({args:argv,allowPositionals:true,options:{
     ...Object.fromEntries(strings.map(k=>[k,{type:'string'}])),
-    ...Object.fromEntries(['once','include-thinking','include-history','no-memories'].map(k=>[k,{type:'boolean'}]))}})
+    ...Object.fromEntries(['once','include-thinking','include-history','no-memories','active-only'].map(k=>[k,{type:'boolean'}]))}})
   if (command==='link') return link(positionals[0],v.code,v.name)
   const config=await loadConfig()
   if (command==='pair' || command==='revoke') {
@@ -40,8 +40,8 @@ async function main() {
   const {call} = toolService(config)
   const tool = (key,args) => call('connecter_'+key,args)
   if (command==='targets' || command==='jobs') return tool(command)
-  if (command==='local-sessions') return tool('local_sessions',v.harness?{harness:v.harness}:{})
-  if (command==='remote-sessions') return tool('remote_sessions',v.harness?{harness:v.harness}:{})
+  if (command==='local-sessions') return tool('local_sessions',{...(v.harness?{harness:v.harness}:{}),...(v['active-only']?{activeOnly:true}:{})})
+  if (command==='remote-sessions') return tool('remote_sessions',{...(v.harness?{harness:v.harness}:{}),...(v['active-only']?{activeOnly:true}:{})})
   if (command==='remote-read') {
     const args = {harness:v.harness,id:v.session}
     if (v.origin) args.origin = v.origin

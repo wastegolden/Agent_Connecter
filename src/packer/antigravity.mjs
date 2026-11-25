@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { files, hasTable, jsonLines, original, problem, snapshot } from './io.mjs'
 import { cleanLines } from './redact.mjs'
@@ -15,7 +15,7 @@ export async function antigravitySessions(home, tempDir) {
       for (const table of ['conversations_fts', 'conversation_summaries']) {
         if (!hasTable(db, table)) continue
         const names = db.prepare('PRAGMA table_info(' + table + ')').all().map(c => c.name)
-        const columns = ['conversation_id', 'title', 'workspace', 'workspace_uris'].filter(key => names.includes(key))
+        const columns = ['conversation_id', 'title', 'workspace', 'workspace_uris', 'archived', 'last_modified_time'].filter(key => names.includes(key))
         if (!columns.includes('conversation_id')) continue
         for (const row of db.prepare('SELECT DISTINCT ' + columns.join(',') + ' FROM ' + table).iterate()) {
           metadata.set(row.conversation_id, { ...metadata.get(row.conversation_id), ...row })
@@ -27,9 +27,17 @@ export async function antigravitySessions(home, tempDir) {
       const id = entry.name
       const dir = join(brain, id)
       const logs = join(dir, '.system_generated', 'logs')
-      if (!files(logs).some(p => basename(p) === 'transcript.jsonl')) continue
+      const transcript = join(logs, 'transcript.jsonl')
+      if (!existsSync(transcript)) continue
       const row = metadata.get(id)
-      sessions.push({ harness: 'antigravity', origin, id, cwd: row?.workspace ?? row?.workspace_uris, title: row?.title ?? id, dir, logs })
+      const annPath = join(root, 'annotations', id + '.pbtxt')
+      const ann = existsSync(annPath) ? readFileSync(annPath, 'utf8') : ''
+      const annArchived = /\barchived\s*:\s*(true|false)\b/.exec(ann)?.[1]
+      const annTitle = /\btitle\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(ann)?.[1]?.replace(/\\(.)/g, '$1')
+      const archived = annArchived !== undefined ? annArchived === 'true' : (row?.archived !== undefined ? Boolean(row.archived) : false)
+      const parsedTime = row?.last_modified_time ? new Date(row.last_modified_time) : null
+      const updatedAt = parsedTime && !Number.isNaN(parsedTime.valueOf()) ? parsedTime.toISOString() : statSync(transcript).mtime.toISOString()
+      sessions.push({ harness: 'antigravity', origin, id, cwd: row?.workspace ?? row?.workspace_uris, title: row?.title || annTitle || id, archived, updatedAt, dir, logs })
     }
   }
   return sessions

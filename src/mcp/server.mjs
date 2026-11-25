@@ -9,8 +9,8 @@ const job = {jobId:str,runId:str}
 const jobFields = Object.keys(job)
 const clientTools = [
   ['targets','List available harnesses and the server project whitelist.'],
-  ['local_sessions','Find local transcripts available for explicit selection.',{harness}],
-  ['remote_sessions','List redacted local sessions available on the paired remote server.',{harness}],
+  ['local_sessions','Find local transcripts available for explicit selection.',{harness,activeOnly:{type:'boolean'}}],
+  ['remote_sessions','List redacted local sessions available on the paired remote server.',{harness,activeOnly:{type:'boolean'}}],
   ['remote_session_read','Extract redacted transcript, memories, and artifacts from a session on the paired remote server.',{
     harness,id:str,origin:{enum:['app','cli']},includeThinking:{type:'boolean'},includeHistory:{type:'boolean'},
     includeMemories:{type:'boolean'},attachToolResults:{type:'boolean'},file:str,
@@ -55,7 +55,10 @@ export function toolService(config) {
     if (key==='dispatch') return dispatch(config,request,args)
     if (key==='targets') return (await request('/api/capabilities')).json()
     if (key==='remote_sessions') {
-      const q = args.harness ? '?harness='+encodeURIComponent(args.harness) : ''
+      const qs = new URLSearchParams()
+      if (args.harness) qs.set('harness', args.harness)
+      if (args.activeOnly) qs.set('activeOnly', 'true')
+      const q = qs.toString() ? '?' + qs : ''
       return (await request('/api/sessions'+q)).json()
     }
     if (key==='remote_session_read') {

@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { files, jsonLines, original } from './io.mjs'
@@ -14,15 +14,30 @@ export async function claudeSessions(home) {
     for (const path of files(root).filter(p => p.endsWith('.jsonl'))) {
       const stream = createReadStream(path)
       try {
+        let cwd, sessionId, slug, customTitle, firstPrompt, seen = 0
         for await (const line of createInterface({ input: stream, crlfDelay: Infinity })) {
           if (!line.trim()) continue
-          const { cwd, sessionId, slug } = JSON.parse(line)
-          if (!cwd) continue
-          const id = sessionId ?? basename(path, '.jsonl')
-          const exact = basename(path, '.jsonl') === id
-          if (!byId.has(id) || exact) byId.set(id, { harness: 'claude-code', id, cwd, title: slug ?? id, path, root })
-          break
+          let row
+          try { row = JSON.parse(line) } catch { continue }
+          if (!cwd && row.cwd) cwd = row.cwd
+          if (!sessionId && row.sessionId) sessionId = row.sessionId
+          if (!slug && row.slug) slug = row.slug
+          if (row.type === 'custom-title' && row.customTitle) customTitle = row.customTitle
+          if (!firstPrompt && row.type === 'user' && row.message?.content) {
+            const parts = row.message.content
+            const rawText = typeof parts === 'string' ? parts
+              : Array.isArray(parts) ? parts.filter(b => b?.type === 'text' && b.text).map(b => b.text).join(' ') : ''
+            const clean = rawText.replace(/\s+/g, ' ').trim()
+            if (clean) firstPrompt = clean.slice(0, 120)
+          }
+          if (++seen >= 50 && cwd && (customTitle || slug || firstPrompt)) break
         }
+        if (!cwd) continue
+        const id = sessionId ?? basename(path, '.jsonl')
+        const exact = basename(path, '.jsonl') === id
+        const title = customTitle ?? slug ?? firstPrompt ?? id
+        const updatedAt = statSync(path).mtime.toISOString()
+        if (!byId.has(id) || exact) byId.set(id, { harness: 'claude-code', id, cwd, title, archived: null, updatedAt, path, root })
       } finally { stream.destroy() }
     }
   }

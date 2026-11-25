@@ -240,9 +240,11 @@ export async function startServer(config, launcherFactory = createLauncher) {
     if (req.headers['x-plugin-version'] && req.headers['x-plugin-version'].split('.')[0]!==pluginVersion.split('.')[0]) fail('VERSION_MISMATCH',409)
     if (get && path==='/api/capabilities') return json(res,capabilities())
     if (get && path==='/api/sessions') {
-      const harness = new URL(req.url, 'http://localhost').searchParams.get('harness') || undefined
+      const qs = new URL(req.url, 'http://localhost').searchParams
+      const harness = qs.get('harness') || undefined
+      const activeOnly = qs.get('activeOnly') === 'true'
       if (harness && !harnesses.includes(harness)) fail('HARNESS_UNKNOWN')
-      return json(res, await listSessions({ harness, home: config.sourceHome, tempDir: config.previewDir }))
+      return json(res, await listSessions({ harness, activeOnly, home: config.sourceHome, tempDir: config.previewDir }))
     }
     if (post && path==='/api/sessions/extract') {
       const input = await body(req)

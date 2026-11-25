@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
 import { files, hasTable, jsonLines, original, snapshot } from './io.mjs'
 import { cleanLines, redactJson } from './redact.mjs'
@@ -22,7 +22,10 @@ export async function codexSessions(home, tempDir) {
   return rows.flatMap(r => {
     const id = r.thread_id ?? r.id
     const path = rollouts.get(id) ?? paths.find(p => p.endsWith('-' + id + '.jsonl'))
-    return path ? [{ harness: 'codex', id, cwd: r.cwd, title: r.display_title ?? r.thread_name ?? id, root, path }] : []
+    if (!path) return []
+    const archived = relative(root, path).split(sep)[0] === 'archived_sessions'
+    const updatedAt = statSync(path).mtime.toISOString()
+    return [{ harness: 'codex', id, cwd: r.cwd, title: r.display_title ?? r.thread_name ?? id, archived, updatedAt, root, path }]
   })
 }
 
